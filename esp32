@@ -1,78 +1,98 @@
+#include <WiFi.h>
 #include <Wire.h>
-#include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <Adafruit_GFX.h>
 #include <SparkFun_MAX3010x.h>
 #include <MAX30205.h>
+#include <Firebase_ESP_Client.h>
 
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET    -1
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+#define WIFI_SSID "YOUR_WIFI_NAME"
+#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+
+
+#define API_KEY "YOUR_FIREBASE_API_KEY"
+#define DATABASE_URL "https://your-project-id-default-rtdb.firebaseio.com/"
+
+// Firebase objects
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
 
 MAX30105 particleSensor;
 MAX30205 tempSensor;
+Adafruit_SSD1306 display(128, 64, &Wire, -1);
 
 const int buttonPin = 25;
-bool buttonState = false;
+
+void connectToWiFi() {
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+}
 
 void setup() {
   Serial.begin(115200);
   Wire.begin();
   pinMode(buttonPin, INPUT_PULLUP);
 
-  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    while (1);
-  }
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
   display.setTextSize(1);
   display.setCursor(0, 0);
-  display.println("MISoul initializing...");
+  display.println("MISoul starting...");
   display.display();
-  delay(1000);
 
-  if (!particleSensor.begin(Wire, I2C_SPEED_STANDARD)) {
-    while (1);
-  }
+  connectToWiFi();
+
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+  particleSensor.begin(Wire, I2C_SPEED_STANDARD);
   particleSensor.setup();
   particleSensor.setPulseAmplitudeRed(0x0A);
 
-  if (!tempSensor.begin()) {
-    while (1);
-  }
+  tempSensor.begin();
 }
 
 void loop() {
   if (digitalRead(buttonPin) == LOW) {
-    Serial.println("Nút đã được nhấn!");
+    Serial.println("Button pressed!");
     delay(300);
   }
 
   int bpm = particleSensor.getHeartRate();
   int spo2 = particleSensor.getSpO2();
-  float bodyTemp = tempSensor.getTemperature();
+  float temp = tempSensor.getTemperature();
 
-  Serial.print("BPM: ");
-  Serial.print(bpm);
-  Serial.print(" | SpO2: ");
-  Serial.print(spo2);
-  Serial.print("% | Temp: ");
-  Serial.print(bodyTemp);
-  Serial.println(" C");
+  Serial.printf("BPM: %d, SpO2: %d%%, Temp: %.2fC\n", bpm, spo2, temp);
 
   display.clearDisplay();
   display.setCursor(0, 0);
   display.println("MISoul Monitor");
   display.println("------------------");
-  display.print("BPM: ");
-  display.println(bpm);
-  display.print("SpO2: ");
-  display.print(spo2);
-  display.println("%");
-  display.print("Temp: ");
-  display.print(bodyTemp);
-  display.println(" C");
+  display.printf("BPM: %d\nSpO2: %d%%\nTemp: %.2fC\n", bpm, spo2, temp);
   display.display();
 
-  delay(1000);
+  String path = "/MISoulData";
+
+  FirebaseJson json;
+  json.set("bpm", bpm);
+  json.set("spo2", spo2);
+  json.set("temp", temp);
+  json.set("timestamp", millis());
+
+  if (Firebase.RTDB.pushJSON(&fbdo, path, &json)) {
+    Serial.println("✔ Data pushed to Firebase");
+  } else {
+    Serial.print("❌ Error: ");
+    Serial.println(fbdo.errorReason());
+  }
+
+  delay(3000);
 }
+
