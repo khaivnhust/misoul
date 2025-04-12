@@ -1,0 +1,78 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <SparkFun_MAX3010x.h>
+#include <MAX30205.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET    -1
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+MAX30105 particleSensor;
+MAX30205 tempSensor;
+
+const int buttonPin = 25;
+bool buttonState = false;
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin();
+  pinMode(buttonPin, INPUT_PULLUP);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    while (1);
+  }
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println("MISoul initializing...");
+  display.display();
+  delay(1000);
+
+  if (!particleSensor.begin(Wire, I2C_SPEED_STANDARD)) {
+    while (1);
+  }
+  particleSensor.setup();
+  particleSensor.setPulseAmplitudeRed(0x0A);
+
+  if (!tempSensor.begin()) {
+    while (1);
+  }
+}
+
+void loop() {
+  if (digitalRead(buttonPin) == LOW) {
+    Serial.println("Nút đã được nhấn!");
+    delay(300);
+  }
+
+  int bpm = particleSensor.getHeartRate();
+  int spo2 = particleSensor.getSpO2();
+  float bodyTemp = tempSensor.getTemperature();
+
+  Serial.print("BPM: ");
+  Serial.print(bpm);
+  Serial.print(" | SpO2: ");
+  Serial.print(spo2);
+  Serial.print("% | Temp: ");
+  Serial.print(bodyTemp);
+  Serial.println(" C");
+
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.println("MISoul Monitor");
+  display.println("------------------");
+  display.print("BPM: ");
+  display.println(bpm);
+  display.print("SpO2: ");
+  display.print(spo2);
+  display.println("%");
+  display.print("Temp: ");
+  display.print(bodyTemp);
+  display.println(" C");
+  display.display();
+
+  delay(1000);
+}
